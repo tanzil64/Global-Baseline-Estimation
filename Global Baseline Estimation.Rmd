@@ -1,0 +1,180 @@
+---
+title: "Global Baseline Estimation"
+author: "md. Tanzil Ehsan"
+date: "`r Sys.Date()`"
+output:
+  openintro::lab_report: default
+  html_document: default
+---
+
+## Set Working drictory
+```{r}
+if (rstudioapi::isAvailable()) {
+  current_dir <- dirname(rstudioapi::getActiveDocumentContext()$path)
+  setwd(current_dir)
+  cat("Working directory set to:", getwd(), "\n")
+} else {
+  cat("rstudioapi not available. Please set the working directory manually using setwd().\n")
+}
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This document predicts Param's rating for *Pitch Perfect 2* using the Global Baseline Estimate algorithm, based on the MovieRatings dataset. The algorithm uses the formula:
+
+\[
+\hat{r}_{ui} = \mu + b_i + b_u
+\]
+
+Where:
+- \( \mu \): Mean movie rating across all users and movies.
+- \( b_i \): *Pitch Perfect 2*'s bias (movie average rating minus \( \mu \)).
+- \( b_u \): Param's bias (user average rating minus \( \mu \)).
+
+The dataset (`MovieRatings.xlsx`) contains ratings from critics for six movies, with some missing values. The expected result, based on provided values (\( \mu = 3.93 \), \( b_i = -1.22 \), \( b_u = -0.43 \)), is a predicted rating of approximately 2.28.
+
+## Setup
+
+Load required R packages. Install them if not already installed.
+
+```{r load-libraries, message=FALSE}
+library(readxl)
+library(dplyr)
+library(tidyr)
+```
+
+## Load and Clean Data
+
+Read the `MovieRatings.xlsx` file and remove duplicate rows, as the dataset contains repeated entries.
+
+
+
+
+```{r}
+library(readxl)
+library(dplyr)
+
+# Read Excel file from GitHub raw link
+url <- "https://raw.githubusercontent.com/tanzil64/Global-Baseline-Estimation/main/MovieRatings.xlsx"
+
+# Download the file to a temporary location
+temp_file <- tempfile(fileext = ".xlsx")
+download.file(url, destfile = temp_file, mode = "wb")
+
+# Read and clean data
+ratings <- read_excel(temp_file, sheet = "MovieRatings")
+ratings <- distinct(ratings)  # Remove duplicates
+head(ratings)
+
+```
+
+
+```{r load-data}
+#ratings <- read_excel("MovieRatings.xlsx", sheet = "MovieRatings")
+#ratings <- distinct(ratings)  # Remove duplicates
+#head(ratings)
+```
+
+Convert the data to long format (Critic, Movie, Rating) to facilitate computations, dropping missing ratings.
+
+```{r reshape-data}
+ratings_long <- ratings %>%
+  pivot_longer(
+    cols = c("CaptainAmerica", "Deadpool", "Frozen", "JungleBook", "PitchPerfect2", "StarWarsForce"),
+    names_to = "Movie",
+    values_to = "Rating",
+    values_drop_na = TRUE
+  )
+```
+
+## Compute Global Mean (\( \mu \))
+
+Calculate the mean rating across all movies and users.
+
+```{r global-mean}
+mu <- mean(ratings_long$Rating, na.rm = TRUE)
+cat("Global Mean Rating (mu):", mu, "\n")
+```
+
+The computed mean is approximately 3.934426, close to the provided 3.93.
+
+## Compute User Biases (\( b_u \))
+
+Calculate each user’s bias as their average rating minus the global mean. No regularization is applied, as the provided Param’s bias (-0.43) suggests none was used.
+
+```{r user-bias}
+user_bias <- ratings_long %>%
+  group_by(Critic) %>%
+  summarise(
+    user_avg = mean(Rating, na.rm = TRUE),
+    n_ratings = n(),
+    .groups = "drop"
+  ) %>%
+  mutate(b_u = user_avg - mu)
+
+# Extract Param's bias
+param_bias <- user_bias %>%
+  filter(Critic == "Param") %>%
+  pull(b_u)
+cat("Param's Bias (b_u):", param_bias, "\n")
+```
+
+Param’s bias is approximately -0.434426, matching the provided value.
+
+## Compute Movie Biases (\( b_i \))
+
+Calculate each movie’s bias as its average rating minus the global mean.
+
+```{r movie-bias}
+movie_bias <- ratings_long %>%
+  group_by(Movie) %>%
+  summarise(
+    movie_avg = mean(Rating, na.rm = TRUE),
+    n_ratings = n(),
+    .groups = "drop"
+  ) %>%
+  mutate(b_i = movie_avg - mu)
+
+# Extract Pitch Perfect 2's bias
+pp2_bias <- movie_bias %>%
+  filter(Movie == "PitchPerfect2") %>%
+  pull(b_i)
+cat("Pitch Perfect 2's Bias (b_i):", pp2_bias, "\n")
+```
+
+*Pitch Perfect 2*’s bias is approximately -1.220140, matching the provided value.
+
+This analysis successfully predicts Param’s rating for *Pitch Perfect 2* using the Global Baseline Estimate algorithm.
+
+## Predict Param’s Rating for Pitch Perfect 2
+
+Compute the predicted rating using the Global Baseline Estimate, clipping to the 1–5 scale.
+
+```{r predict-rating}
+predicted_rating <- mu + param_bias + pp2_bias
+predicted_rating <- pmin(pmax(predicted_rating, 1), 5)  # Clip to 1-5 scale
+cat("Predicted Rating for Param on Pitch Perfect 2:", predicted_rating, "\n")
+```
+
+## Validation
+
+Compare the predicted rating to the provided expected value (2.2798594847775178).
+
+```{r validate}
+expected_rating <- 2.2798594847775178
+cat("Provided Expected Rating:", expected_rating, "\n")
+cat("Difference from Expected:", abs(predicted_rating - expected_rating), "\n")
+```
+
+The predicted rating (~2.279859) matches the expected value, confirming the computation.
+
+## Conclusion:
+Using the Global Baseline Estimate, we accurately predicted Param’s rating for Pitch Perfect 2 as 2.28, matching the expected result. This confirms the effectiveness of the approach in capturing user and item biases, even with sparse data. It provides a solid foundation for building more advanced recommender systems.
+
+
+
+
